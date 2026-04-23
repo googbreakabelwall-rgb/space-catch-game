@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Space Catch Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      transition: 0.3s;
+      position: relative;
+    }
+
+    body.dark {
+      background: radial-gradient(circle at 20% 20%, #1a1a2e, #000);
+      color: black;
+    }
+
+    body.light {
+      background: linear-gradient(#cfe8ff, #ffffff);
+      color: black;
+    }
+
+    body.dark::before,
+    body.light::before {
+      content: "";
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body.dark::before {
+      background-image: radial-gradient(white 1px, transparent 1px);
+      background-size: 20px 20px;
+      opacity: 0.3;
+    }
+
+    body.light::before {
+      background-image: radial-gradient(#000 1px, transparent 1px);
+      background-size: 25px 25px;
+      opacity: 0.1;
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 18px;
+      z-index: 10;
+      background: rgba(255,255,255,0.75);
+      padding: 6px 12px;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .box {
+      width: 50px;
+      height: 50px;
+      position: absolute;
+      cursor: pointer;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      z-index: 5;
+      touch-action: manipulation;
+    }
+
+    #good { background: #aaffaa; }
+    #fake { background: #ffaaaa; }
+
+    #gameOver, #startMenu, #difficultyMenu, #achievementPopup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      color: white;
+      z-index: 20;
+    }
+
+    #difficultyMenu, #gameOver, #achievementPopup {
+      display: none;
+    }
+
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #achievementPopup h2 {
+      color: gold;
+    }
+  </style>
+</head>
+
+<body class="dark">
+
+<div id="startMenu">
+  <h1>SPACE CATCH</h1>
+  <button onclick="showDifficulty()">PLAY</button>
+</div>
+
+<div id="difficultyMenu">
+  <h2>Select Difficulty</h2>
+  <button onclick="setDifficulty('easy')">Easy</button>
+  <button onclick="setDifficulty('medium')">Medium</button>
+  <button onclick="setDifficulty('hard')">Hard</button>
+</div>
+
+<div id="ui">
+  Score: <span id="score">0</span> |
+  Lives: <span id="lives">3</span> |
+  Combo: <span id="combo">0</span>x
+</div>
+
+<div id="good" class="box">😊</div>
+<div id="fake" class="box">😠</div>
+
+<div id="gameOver">
+  <h1>GAME OVER</h1>
+  <p>Best Score: <span id="bestScore">0</span></p>
+  <button onclick="restartGame()">Main Lagi</button>
+</div>
+
+<div id="achievementPopup">
+  <h2>🏆 Achievement Unlocked!</h2>
+  <p id="achievementText">"swety player"</p>
+  <button onclick="closeAchievement()">OK</button>
+</div>
+
+<script>
+let interval;
+let goodInterval;
+let isGameOver = false;
+let difficulty = "medium";
+let crazyMode = false;
+
+const good = document.getElementById("good");
+const fake = document.getElementById("fake");
+const ui = document.getElementById("ui");
+const gameOver = document.getElementById("gameOver");
+const bestScoreEl = document.getElementById("bestScore");
+const achievementPopup = document.getElementById("achievementPopup");
+const achievementText = document.getElementById("achievementText");
+
+let score = 0;
+let lives = 3;
+let combo = 0;
+let streak = 0;
+
+let bestScore = localStorage.getItem("bestScore") || 0;
+let achievementUnlocked1 = false;
+let achievementUnlocked2 = false;
+let crazyTriggered = false;
+
+function showAchievement(text) {
+  achievementText.textContent = '"' + text + '"';
+  achievementPopup.style.display = "flex";
+}
+
+function closeAchievement() {
+  achievementPopup.style.display = "none";
+}
+
+function enableCrazyMode() {
+  if (crazyMode) return;
+  crazyMode = true;
+
+  clearInterval(interval);
+  clearInterval(goodInterval);
+
+  // super fast mode
+  interval = setInterval(moveFake, 200);
+  goodInterval = setInterval(moveGood, 300);
+}
+
+function checkAchievements() {
+  if (!achievementUnlocked1 && score >= 1000) {
+    achievementUnlocked1 = true;
+    showAchievement("swety player");
+  }
+
+  if (!achievementUnlocked2 && streak >= 250) {
+    achievementUnlocked2 = true;
+    showAchievement("upnormal person");
+  }
+}
+
+function updateBestScore() {
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem("bestScore", bestScore);
+  }
+  bestScoreEl.textContent = bestScore;
+}
+
+function showDifficulty() {
+  document.getElementById("startMenu").style.display = "none";
+  document.getElementById("difficultyMenu").style.display = "flex";
+}
+
+function setDifficulty(level) {
+  difficulty = level;
+  document.getElementById("difficultyMenu").style.display = "none";
+  ui.style.display = "block";
+  startGame();
+}
+
+function clamp(el) {
+  const size = 50;
+  const maxX = window.innerWidth - size;
+  const maxY = window.innerHeight - size;
+
+  el.style.left = Math.random() * maxX + "px";
+  el.style.top = Math.random() * maxY + "px";
+}
+
+function moveFake() {
+  if (isGameOver) return;
+  clamp(fake);
+}
+
+function moveGood() {
+  if (isGameOver) return;
+  setTimeout(() => clamp(good), 200);
+}
+
+function updateScore() {
+  if (isGameOver) return;
+
+  score++;
+  streak++;
+  combo++;
+
+  document.getElementById("score").textContent = score;
+  document.getElementById("combo").textContent = combo;
+
+  checkAchievements();
+
+  // CRAZY MODE TRIGGER
+  if (!crazyTriggered && score >= 999) {
+    crazyTriggered = true;
+    enableCrazyMode();
+  }
+}
+
+function loseLife() {
+  if (isGameOver) return;
+
+  lives--;
+  streak = 0;
+  combo = 0;
+
+  document.getElementById("lives").textContent = lives;
+  document.getElementById("combo").textContent = combo;
+
+  if (lives <= 0) {
+    isGameOver = true;
+    clearInterval(interval);
+    clearInterval(goodInterval);
+
+    updateBestScore();
+    gameOver.style.display = "flex";
+  }
+}
+
+function startGame() {
+  clearInterval(interval);
+  clearInterval(goodInterval);
+
+  interval = setInterval(moveFake, 600);
+  goodInterval = setInterval(moveGood, 1200);
+
+  moveFake();
+  moveGood();
+}
+
+function restartGame() {
+  score = 0;
+  lives = 3;
+  combo = 0;
+  streak = 0;
+  crazyMode = false;
+  crazyTriggered = false;
+  isGameOver = false;
+
+  document.getElementById("score").textContent = score;
+  document.getElementById("lives").textContent = lives;
+  document.getElementById("combo").textContent = combo;
+
+  gameOver.style.display = "none";
+  startGame();
+}
+
+good.addEventListener("click", updateScore);
+fake.addEventListener("click", loseLife);
+
+bestScoreEl.textContent = bestScore;
+</script>
+
+</body>
+</html>
